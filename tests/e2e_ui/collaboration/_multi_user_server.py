@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import signal
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -65,6 +66,26 @@ class MultiUserServer:
     session_id: str
 
 
+def create_user_session(
+    base_url: str,
+    *,
+    headers: dict[str, str],
+    metadata: Mapping[str, Any] | None = None,
+    bundle: bytes | None = None,
+) -> str:
+    """Create a successful session with explicit identity and caller-owned metadata."""
+    create = post_session_bundle(
+        httpx.post,
+        f"{base_url}/v1/sessions",
+        _build_hello_world_bundle() if bundle is None else bundle,
+        headers=headers,
+        metadata=metadata,
+        timeout=30.0,
+    )
+    create.raise_for_status()
+    return create.json()["session_id"]
+
+
 def public_loopback_url(base_url: str) -> str:
     """Return *base_url* through the browser's public-looking loopback alias."""
     parsed = urlsplit(base_url)
@@ -90,6 +111,7 @@ def spawn_multi_user_server(
     *,
     extra_server_env: dict[str, str] | None = None,
     admin_headers: dict[str, str] | None = None,
+    admin_email: str = ADMIN_EMAIL,
 ) -> Iterator[MultiUserServer]:
     """Spawn a multi-user server + one admin-owned session; yield a handle.
 
@@ -103,22 +125,20 @@ def spawn_multi_user_server(
     :param server_tmp: A per-test temp dir (``tmp_path_factory.mktemp(...)``).
     :param extra_server_env: Extra env vars for the server process.
     :param admin_headers: Admin credentials when testing a different identity header.
+    :param admin_email: Identity to list as admin and use with the default header.
     :yields: A :class:`MultiUserServer` handle.
     """
     agent_yaml_path = server_tmp / "hello_world.yaml"
     agent_yaml_path.write_text(_TEST_AGENT_YAML)
-    # Declare the admin roster via the admin-list file (one identity per line;
-    # see omnigent/server/admin_list.py). There is no admin *env var* — the
-    # roster is the config ``admins:`` list or this file — so point
-    # OMNIGENT_ADMIN_LIST_PATH at it. This makes ADMIN_EMAIL resolve as admin
-    # so /v1/me reports is_admin:true and the Settings Admin group renders.
+    # The admin-list file makes this identity an admin in /v1/me and settings;
+    # OMNIGENT_ADMIN_LIST_PATH selects the roster for this isolated server.
     admins_path = server_tmp / "admins"
-    admins_path.write_text(f"{ADMIN_EMAIL}\n")
+    admins_path.write_text(f"{admin_email}\n")
 
     # Requests authenticated as the admin identity. A multi-user header-auth
     # server 401s headerless requests, so every REST call here carries it.
     if admin_headers is None:
-        admin_headers = {"X-Forwarded-Email": ADMIN_EMAIL}
+        admin_headers = {"X-Forwarded-Email": admin_email}
 
     server_env = {
         # The whole point: NOT single-user. Clear the marker the suite sets so
@@ -142,16 +162,9 @@ def spawn_multi_user_server(
         health_timeout=_HEALTH_TIMEOUT_S,
         poll_interval=_HEALTH_POLL_INTERVAL_S,
     ) as base_url:
-        # Create an admin-owned hello_world session (authenticated, so it's
-        # owned by ADMIN_EMAIL — headerless would 401 here). No runner bind and
-        # no turn: the Share modal / button / settings nav only need a
-        # top-level session to exist at manage level, which the owner has.
-        bundle = _build_hello_world_bundle()
-        create = post_session_bundle(
-            httpx.post, f"{base_url}/v1/sessions", bundle, headers=admin_headers, timeout=30.0
-        )
-        create.raise_for_status()
-        session_id = create.json()["session_id"]
+        # Authenticated creation establishes ownership. Share UI needs a top-level
+        # session at manage level, with no runner or agent turn.
+        session_id = create_user_session(base_url, headers=admin_headers)
 
         yield MultiUserServer(
             base_url=base_url,
