@@ -8990,3 +8990,19 @@ def test_run_host_process_classifies_how_the_host_ended(
         )
 
     assert _host_exit_reasons(caplog) == [expected]
+
+
+async def test_host_publishes_stored_workspace_at_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host's rows carry the recorded workspace id before it ever connects."""
+    from omnigent.cli_auth import store_databricks_org_id
+
+    server_url = "https://example.databricks.com/api/2.0/omnigent"
+    monkeypatch.setenv("OMNIGENT_DATA_DIR", str(tmp_path))
+    store_databricks_org_id(server_url, "1965859176160743")
+
+    host = _host(server_url)
+
+    assert host._origin_workspace_id == "1965859176160743"
+    assert os.environ[debug_logging.ORIGIN_WORKSPACE_ID_ENV_VAR] == "1965859176160743"
