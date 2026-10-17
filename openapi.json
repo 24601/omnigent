@@ -811,18 +811,6 @@
       "CancelledEvent": {
         "description": "Terminal event for a turn cancelled before completion.",
         "properties": {
-          "input_stable_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Input Stable Id"
-          },
           "response": {
             "$ref": "#/components/schemas/ResponseObject",
             "description": "The final response object with `status=\"cancelled\"`."
@@ -1513,18 +1501,6 @@
       "CompletedEvent": {
         "description": "Terminal event for a successfully completed turn.\n\nCarries the final\n`omnigent.server.schemas.ResponseObject`.",
         "properties": {
-          "input_stable_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Input Stable Id"
-          },
           "response": {
             "$ref": "#/components/schemas/ResponseObject",
             "description": "The final response object with `status=\"completed\"`."
@@ -2662,18 +2638,6 @@
       "FailedEvent": {
         "description": "Terminal event for a turn that ended with an error.\n\nCarries a `omnigent.server.schemas.FailedResponseObject`\nwhose `error` field describes the failure. Response metadata may\nbe absent when the failure occurs before response allocation.",
         "properties": {
-          "input_stable_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Input Stable Id"
-          },
           "response": {
             "anyOf": [
               {
@@ -3447,18 +3411,6 @@
       "InProgressEvent": {
         "description": "Event emitted once the task transitions to in-progress.\n\nAlways follows `response.created` (and `response.queued`\nfor background tasks).",
         "properties": {
-          "input_stable_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Input Stable Id"
-          },
           "response": {
             "$ref": "#/components/schemas/ResponseObject",
             "description": "The response object with `status=\"in_progress\"`."
@@ -3508,18 +3460,6 @@
       "IncompleteEvent": {
         "description": "Terminal event for a turn that ended without completing\n(e.g. hit the iteration cap or token budget).",
         "properties": {
-          "input_stable_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Input Stable Id"
-          },
           "response": {
             "$ref": "#/components/schemas/ResponseObject",
             "description": "The final response object with `status=\"incomplete\"` and `incomplete_details` populated describing the reason."

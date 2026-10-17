@@ -464,67 +464,6 @@ async def test_stream_overflow_closes_without_done_for_reconnect(
     assert all("[DONE]" not in frame for frame in frames)
 
 
-@pytest.mark.asyncio
-async def test_stream_keeps_the_input_stable_id_the_runner_stamps(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The live stream carries ``input_stable_id`` on lifecycle events.
-
-    The runner stamps the stable id of the message that started a turn on
-    its in-progress and terminal events. A client sharing the session uses
-    it to tell its own turn from another sender's, so the wire boundary
-    must not drop it, and must not add it where the runner did not.
-    """
-    from omnigent.runtime import session_stream
-    from omnigent.server.routes.sessions import _stream_live_events
-
-    stable_id = "0123456789abcdef0123456789abcdef"
-    response = {"id": "resp_1", "status": "in_progress", "model": "m", "created_at": 1}
-    published = [
-        {"type": "response.in_progress", "response": response, "input_stable_id": stable_id},
-        {
-            "type": "response.completed",
-            "response": {**response, "status": "completed"},
-            "input_stable_id": stable_id,
-        },
-        {
-            "type": "response.failed",
-            "response": {"status": "failed", "error": {"code": "x", "message": "boom"}},
-            "input_stable_id": stable_id,
-        },
-        {"type": "response.cancelled", "response": {**response, "status": "cancelled"}},
-    ]
-
-    async def subscribe(*_args: Any, **_kwargs: Any):
-        for event in published:
-            yield event
-
-    class ConnectedRequest:
-        """Request stub that stays connected."""
-
-        async def is_disconnected(self) -> bool:
-            """Return ``False`` so every published event is read."""
-            return False
-
-    monkeypatch.setattr(session_stream, "subscribe", subscribe)
-    request: Any = ConnectedRequest()
-    frames = [frame async for frame in _stream_live_events(request, "conv_1")]
-    events = [
-        json.loads(line[len("data: ") :])
-        for frame in frames
-        for line in frame.splitlines()
-        if line.startswith("data: {")
-    ]
-
-    assert [event.get("input_stable_id") for event in events] == [
-        stable_id,
-        stable_id,
-        stable_id,
-        None,
-    ]
-    assert "input_stable_id" not in events[3]
-
-
 def test_publish_session_status_helper_uses_waiting_literal() -> None:
     """``workflow._publish_session_status`` publishes a typed waiting event.
 

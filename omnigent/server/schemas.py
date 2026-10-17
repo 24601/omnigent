@@ -4444,22 +4444,7 @@ class QueuedEvent(_SSEEventBase):
     response: ResponseObject
 
 
-class _InputLifecycleEvent(_SSEEventBase):
-    """
-    Common base for the response lifecycle events the runner stamps.
-
-    :param input_stable_id: The 32-hex web ``stable_id`` of the message
-        that started this turn, stamped by the runner on in-progress and
-        terminal events, e.g. ``"0123456789abcdef0123456789abcdef"``.
-        ``None`` (and absent on the wire) for a turn no stable id started.
-        A client that sent the id uses it to tell its own turn from
-        another sender's on a shared session stream.
-    """
-
-    input_stable_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
-
-
-class InProgressEvent(_InputLifecycleEvent):
+class InProgressEvent(_SSEEventBase):
     """
     Event emitted once the task transitions to in-progress.
 
@@ -4475,7 +4460,7 @@ class InProgressEvent(_InputLifecycleEvent):
     response: ResponseObject
 
 
-class CompletedEvent(_InputLifecycleEvent):
+class CompletedEvent(_SSEEventBase):
     """
     Terminal event for a successfully completed turn.
 
@@ -4491,7 +4476,7 @@ class CompletedEvent(_InputLifecycleEvent):
     response: ResponseObject
 
 
-class FailedEvent(_InputLifecycleEvent):
+class FailedEvent(_SSEEventBase):
     """
     Terminal event for a turn that ended with an error.
 
@@ -4513,7 +4498,7 @@ class FailedEvent(_InputLifecycleEvent):
     response: ResponseObject | FailedResponseObject
 
 
-class CancelledEvent(_InputLifecycleEvent):
+class CancelledEvent(_SSEEventBase):
     """
     Terminal event for a turn cancelled before completion.
 
@@ -4526,7 +4511,7 @@ class CancelledEvent(_InputLifecycleEvent):
     response: ResponseObject
 
 
-class IncompleteEvent(_InputLifecycleEvent):
+class IncompleteEvent(_SSEEventBase):
     """
     Terminal event for a turn that ended without completing
     (e.g. hit the iteration cap or token budget).
