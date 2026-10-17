@@ -13,6 +13,7 @@ This is a fork of [omnigent-ai/omnigent](https://github.com/omnigent-ai/omnigent
 | Branch | Change | Upstream status |
 | --- | --- | --- |
 | `patch/trace-context-keep-active-parent` | `trace_context_for_response` keeps a valid, sampled active trace parent instead of always rooting a response-derived trace. | Not proposed |
+| `patch/stream-input-stable-id` | The session stream keeps the `input_stable_id` the runner stamps on a turn's `in_progress` and terminal events, so a sender can tell which turn answered its message. | Not proposed |
 
 ## Adding a patch
 
