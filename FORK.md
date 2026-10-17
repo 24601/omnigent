@@ -25,4 +25,6 @@ When upstream merges an equivalent change, the next merge of upstream `main` int
 
 ## GitHub Actions
 
-Actions is disabled on this fork. Upstream's workflows target GitHub-hosted runners and do not run here.
+Only `.github/workflows/ci.yml` runs on this fork. Every other upstream workflow is disabled, and the fork's sync job disables any new one each cycle. The default `GITHUB_TOKEN` is read-only, and runs for pull requests from outside contributors need approval.
+
+[Pull request #1](https://github.com/24601/omnigent/pull/1), `modyl` into `main`, stays open so CI runs on every push to `modyl`. It is never merged.
