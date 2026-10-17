@@ -154,8 +154,8 @@ def _tool(name: str, args: dict[str, object], call_id: str) -> list[ExecutorEven
     ]
 
 
-async def _run(events: list[ExecutorEvent]) -> None:
-    """Run one adapter turn over *events*."""
+async def _run(events: list[ExecutorEvent]) -> str:
+    """Run one adapter turn over *events* and return its response id."""
     executor = MockExecutor()
     executor.enqueue_events(events)
     adapter = ExecutorAdapter(executor_factory=lambda: executor)
@@ -168,10 +168,20 @@ async def _run(events: list[ExecutorEvent]) -> None:
         await adapter.run_turn(CreateResponseRequest(model="test-agent", input="hi"), ctx)
     finally:
         await adapter.on_shutdown()
+    return ctx.response_id
 
 
 def _tool_spans(exporter: InMemorySpanExporter) -> list[ReadableSpan]:
     return [s for s in exporter.get_finished_spans() if s.name.startswith("tool:")]
+
+
+@pytest.mark.asyncio
+async def test_agent_span_carries_the_turns_response_id(exporter: InMemorySpanExporter) -> None:
+    """The AGENT span names its response, so a turn on its caller's trace stays findable."""
+    response_id = await _run([TurnComplete(response="done")])
+
+    agent_spans = [s for s in exporter.get_finished_spans() if s.name.startswith("agent:")]
+    assert [(s.attributes or {}).get("omnigent.response.id") for s in agent_spans] == [response_id]
 
 
 @pytest.mark.asyncio
