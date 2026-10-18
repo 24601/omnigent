@@ -7209,6 +7209,15 @@ export function handleSessionEvent(event: StreamEvent, streamConversationId?: st
           exact: true,
         });
         void queryClient?.invalidateQueries({ queryKey: ["hosts"] });
+        // Cancel pre-binding requests too: invalidation alone reuses an initial fetch.
+        void queryClient?.cancelQueries({
+          queryKey: ["session-agent", event.conversationId],
+          exact: true,
+        });
+        void queryClient?.invalidateQueries({
+          queryKey: ["session-agent", event.conversationId],
+          exact: true,
+        });
       }
       return;
     case "session_mcp_startup": {
