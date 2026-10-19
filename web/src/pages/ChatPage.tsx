@@ -3896,7 +3896,14 @@ function ComposerImpl(
                     showClaudePermissionMode ? claudePermissionMode : codexApprovalMode
                   }
                   options={permissionOptions}
-                  disabled={isReadOnly || unreachable || configBusy}
+                  disabled={
+                    isReadOnly || unreachable || configBusy || !isOwnerLevel(permissionLevel)
+                  }
+                  disabledReason={
+                    isOwnerLevel(permissionLevel)
+                      ? undefined
+                      : "Only the session owner can change the permission mode"
+                  }
                   onSelect={(mode) => void changePermission(mode)}
                 />
               )}
