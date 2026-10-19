@@ -1629,6 +1629,7 @@ function WorkspacePanelImpl({
                 mobileOverlay={isMobile}
                 frameless
                 open
+                mediaActive={isMobile ? mobileFileTarget != null : open}
                 conversationId={conversationId}
                 path={selectedFilePath}
                 position={filePosition}
