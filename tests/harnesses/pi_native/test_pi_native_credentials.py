@@ -12,6 +12,7 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -3616,6 +3617,77 @@ def test_pi_own_login_options_tolerate_malformed_files(tmp_path: Path) -> None:
     (tmp_path / "auth.json").write_text("{not json")
     (tmp_path / "models-store.json").write_text("[]")
     assert creds.pi_own_login_model_options(agent_dir=tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    ("patterns", "selected", "calls"),
+    [
+        (["anthropic/claude-sonnet-4-5"], True, 1),
+        (["missing/*"], False, 1),
+        ("anthropic", False, 0),
+        ([42, "", "  "], False, 0),
+    ],
+)
+def test_pi_own_login_options_apply_scope_or_keep_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    patterns: object,
+    selected: bool,
+    calls: int,
+) -> None:
+    (tmp_path / "auth.json").write_text(
+        json.dumps(
+            {provider: {"type": "api_key", "key": "test-only"} for provider in ("anthropic",)}
+        )
+    )
+    (tmp_path / "models-store.json").write_text(
+        json.dumps(
+            {
+                "anthropic": {"models": [{"id": "claude-sonnet-4-5", "name": "Sonnet"}]},
+            }
+        )
+    )
+    (tmp_path / "models.json").write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "openrouter": {
+                        "apiKey": "test-only",
+                        "models": [
+                            {"id": "ai21/jamba-large-1.7", "name": "Jamba"},
+                        ],
+                    },
+                }
+            }
+        )
+    )
+    (tmp_path / "settings.json").write_text(json.dumps({"enabledModels": patterns}))
+    resolver = Mock(side_effect=lambda _patterns, models: models[:1] if selected else [])
+    monkeypatch.setattr(creds, "scope_models", resolver)
+    options = creds.pi_own_login_model_options(agent_dir=tmp_path)
+    expected = [
+        {
+            "id": "anthropic/claude-sonnet-4-5",
+            "model": "anthropic/claude-sonnet-4-5",
+            "displayName": "Sonnet",
+        }
+    ]
+    if not selected:
+        expected.append(
+            {
+                "id": "openrouter/ai21/jamba-large-1.7",
+                "model": "openrouter/ai21/jamba-large-1.7",
+                "displayName": "Jamba",
+            }
+        )
+    assert options == expected
+    assert resolver.call_count == calls
+    if calls:
+        assert resolver.call_args.args[0] == patterns
+        assert [entry.reference for entry in resolver.call_args.args[1]] == [
+            "anthropic/claude-sonnet-4-5",
+            "openrouter/ai21/jamba-large-1.7",
+        ]
 
 
 @pytest.mark.parametrize(
