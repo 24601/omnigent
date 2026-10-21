@@ -5025,8 +5025,11 @@ async def _auto_create_codex_terminal(
     # machine-level config, parity with the in-process harness (#2744).
     _launch_spec = agent_spec.spec if isinstance(agent_spec, ResolvedSpec) else agent_spec
     _codex_terminal_args = launch_config.terminal_launch_args or ()
-    _codex_launch = resolve_native_codex_launch(
-        model=default_model, spec=_launch_spec, terminal_launch_args=_codex_terminal_args
+    _codex_launch = await asyncio.to_thread(
+        resolve_native_codex_launch,
+        model=default_model,
+        spec=_launch_spec,
+        terminal_launch_args=_codex_terminal_args,
     )
     from omnigent.inference_config import binding_for_harness, load_runtime_inference_config
 
@@ -5122,7 +5125,8 @@ async def _auto_create_codex_terminal(
                     # `omnigent codex --model` pins the same id in the spec, so
                     # falling back to it would relaunch the unlisted model.
                     fallback_model = None
-                _codex_launch = resolve_native_codex_launch(
+                _codex_launch = await asyncio.to_thread(
+                    resolve_native_codex_launch,
                     model=fallback_model,
                     spec=_launch_spec,
                     terminal_launch_args=_codex_terminal_args,
