@@ -437,6 +437,20 @@ Cross-harness journeys:
   receipt races, abandoned-hook cleanup, and legacy verdict replay are covered by
   `tests/server/integration/test_kiro_permission_delivery.py`.
   These tests do not verify a signed-in vendor Kiro CLI.
+- **`resume`, Pi full runner restart (own environment):**
+  `tests/e2e/test_native_resume_provider_e2e.py::test_connected_native_resume_routes_to_configured_provider`
+  checks changed, unchanged and pinned providers with the real Pi CLI, server,
+  runner and native terminal. After runner cleanup deletes local bridge files,
+  stored own-session usage restores the baseline; Chat and TUI turns advance
+  input tokens 1,000 → 1,100 → 1,200 and retain history/model. Provider replies
+  and usage are scripted. This is not live billing or browser-rendering proof.
+- **`resume`, Pi process relaunch with a surviving runner (own environment):**
+  `tests/e2e/test_native_resume_provider_e2e.py::test_connected_native_resume_routes_to_configured_provider`
+  includes a Pi-only process-relaunch case. Keep the runner and bridge directory,
+  relaunch the session-owned Pi pane, then send through Chat and the native
+  terminal. Check retained history and cumulative input usage 1,000 → 1,100 →
+  1,200. The provider replies and usage are scripted; this does not prove live
+  billing or recovery after the runner deletes the bridge directory.
 - **`resume`, bare picker scoped to this host:**
   `tests/e2e/test_native_resume_picker_cross_host_e2e.py::test_bare_resume_picker_excludes_other_hosts_sessions`
 - **`resume`, Claude and Pi provider selection after a runner restart:**
