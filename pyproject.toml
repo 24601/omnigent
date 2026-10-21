@@ -569,6 +569,9 @@ extend-exclude = [
     "omnigent/api/**/*_pb2.pyi",
 ]
 
+[tool.ruff.format]
+docstring-code-format = true
+
 [tool.ruff.lint]
 # ``E``/``F``  — pycodestyle + pyflakes baseline
 # ``I``        — import sorting
@@ -654,9 +657,6 @@ known-first-party = ["omnigent"]
     "ARG001", "ARG002", "BLE001", "B008", "RUF012",
 ]
 "omnigent/runtime/**/*.py" = [
-    "ARG001", "ARG002", "BLE001", "B008", "RUF012",
-]
-"omnigent/terminals/**/*.py" = [
     "ARG001", "ARG002", "BLE001", "B008", "RUF012",
 ]
 "omnigent/tools/**/*.py" = [
