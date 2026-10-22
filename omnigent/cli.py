@@ -82,6 +82,9 @@ from omnigent.host.daemon_lifecycle import (
     daemon_registry_dir as _daemon_registry_dir_for,
 )
 from omnigent.host.daemon_lifecycle import (
+    daemon_target_server_url as _daemon_target_server_url,
+)
+from omnigent.host.daemon_lifecycle import (
     find_same_workspace_daemon as _find_same_workspace_daemon,
 )
 from omnigent.host.daemon_lifecycle import (
@@ -2638,6 +2641,26 @@ class _SpawnedDaemonProcess:
     process: subprocess.Popen[bytes] | None = None
 
 
+def _selected_org_id(server_url: str | None) -> str | None:
+    """Return the workspace selected for a workspace-hosted *server_url*, else ``None``.
+
+    Only the workspace API mount fronts several workspaces; an app or other server
+    keeps its URL-only key even when a login stored an org for it.
+    """
+    from omnigent.util.server_url import is_workspace_hosted_url
+
+    if not server_url or not is_workspace_hosted_url(server_url):
+        return None
+    from omnigent.cli_auth import load_databricks_org_id
+
+    # The pin and login match the URL as given; a record target may be an old
+    # spelling, which only its canonical form finds. Both the registry key and the
+    # daemon pin come from here, so they agree.
+    return load_databricks_org_id(server_url) or load_databricks_org_id(
+        _normalize_daemon_target_impl(server_url)
+    )
+
+
 def _normalize_daemon_target(server_url: str | None) -> str:
     """
     Normalize a daemon target key.
@@ -2646,9 +2669,9 @@ def _normalize_daemon_target(server_url: str | None) -> str:
         ``"https://example.databricksapps.com/"``. ``None`` or empty
         string selects local mode.
     :returns: ``"local"`` for local mode, otherwise the URL without a
-        trailing slash.
+        trailing slash, plus ``?o=`` for the workspace selected for it.
     """
-    return _normalize_daemon_target_impl(server_url)
+    return _normalize_daemon_target_impl(server_url, org_id=_selected_org_id(server_url))
 
 
 def _daemon_host_status_probe(
@@ -3133,7 +3156,7 @@ def _record_probed_through(record: _HostDaemonRecord, server_url: str) -> _HostD
     :returns: The copied record, targeting *server_url*.
     """
     target = _normalize_daemon_target(server_url)
-    return replace(record, target=target, server_url=target)
+    return replace(record, target=target, server_url=_daemon_target_server_url(target))
 
 
 def _same_workspace_daemon_offline_reason(
@@ -3382,7 +3405,7 @@ def _foreground_daemon_record(
         pid=os.getpid(),
         target=target,
         mode=mode,
-        server_url=None if mode == "local" else target,
+        server_url=None if mode == "local" else _daemon_target_server_url(target),
         log_path=None,
         started_at=int(time.time()),
         host_id=host_id,
@@ -3522,7 +3545,7 @@ def _raise_live_daemon_conflict(
     from omnigent.cli_diagnostics import SUPPRESS_RECOVERY_HINT_ATTR
 
     # server_url is None in local mode; "" makes the hint say --server "".
-    stop_command = _host_stop_command(conflict.server_url or "")
+    stop_command = _host_stop_command(conflict.target if conflict.server_url else "")
     same_workspace = (
         conflict.mode == "server"
         and record.mode == "server"
@@ -3857,6 +3880,12 @@ def _build_host_daemon_env(
 
     env.pop(DISPATCH_TRACEPARENT_ENV_VAR, None)
     env.pop(DISPATCH_TRACESTATE_ENV_VAR, None)
+    from omnigent.cli_auth import PINNED_DATABRICKS_ORG_ENV_VAR, databricks_org_pin
+
+    env.pop(PINNED_DATABRICKS_ORG_ENV_VAR, None)
+    org_id = _selected_org_id(server_url)
+    if server_url and org_id:
+        env[PINNED_DATABRICKS_ORG_ENV_VAR] = databricks_org_pin(server_url, org_id)
     return env
 
 
@@ -9447,7 +9476,7 @@ def _run_background_host(
             _update_daemon_resolved_server_url(target, server_url)
             record = _find_daemon_record(target) or record
         else:
-            server_url = _normalize_daemon_target(record.target)
+            server_url = _daemon_target_server_url(_normalize_daemon_target(record.target))
         # A reused same-workspace daemon may be visible through only one of the
         # two URLs, whichever this machine's credentials still work for.
         also_via = None
@@ -10793,7 +10822,7 @@ def host_status(
             and _normalize_daemon_target(record.target) != requested_target
         ):
             # Selected by workspace: the daemon serves --server's workspace via another URL.
-            payload["same_workspace_as"] = requested_target
+            payload["same_workspace_as"] = _daemon_target_server_url(requested_target)
         return payload
 
     with concurrent.futures.ThreadPoolExecutor() as pool:
@@ -13006,8 +13035,10 @@ def _resolve_server_url(server: str) -> ServerUrl:
         if org_id is not None:
             resolved = ServerUrl(api_base=api_base, org_id=org_id)
             if resolved.is_workspace_hosted:
-                from omnigent.cli_auth import store_databricks_org_id
+                from omnigent.cli_auth import pin_databricks_org_id, store_databricks_org_id
 
+                # Pin first: the stored record is shared across workspaces on this host.
+                pin_databricks_org_id(resolved.api_base, org_id)
                 try:
                     store_databricks_org_id(resolved.api_base, org_id)
                 except OSError as exc:
