@@ -5654,6 +5654,18 @@
       "SandboxStatus": {
         "description": "Managed-sandbox launch progress for a `host_type=\"managed\"` session.\n\nCarried on the session snapshot only while the session's\nbackground sandbox launch is in flight or has failed; `None`\nfor sessions without a managed launch and once the launch\nsucceeds (the session then looks like any host-bound session).",
         "properties": {
+          "details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the user needs to do when `stage == \"action_required\"`, e.g. `\"Sign in on your laptop.\"`. `None` otherwise.",
+            "title": "Details"
+          },
           "error": {
             "anyOf": [
               {
@@ -5679,9 +5691,10 @@
             "title": "Provider"
           },
           "stage": {
-            "description": "Current launch stage, e.g. `\"provisioning\"` \u2014 one of `SandboxLaunchStage`, in pipeline order: `provisioning` (creating the sandbox) \u2192 `cloning` (cloning the repository workspace; skipped when the session has none) \u2192 `starting` (starting the in-sandbox host) \u2192 `connecting` (launching the agent runner) \u2192 `ready` / `failed`.",
+            "description": "Current launch stage, e.g. `\"provisioning\"` \u2014 one of `SandboxLaunchStage`, in pipeline order: `provisioning` (creating the sandbox; `action_required` while it also needs the user to act) \u2192 `cloning` (cloning the repository workspace; skipped when the session has none) \u2192 `starting` (starting the in-sandbox host) \u2192 `connecting` (launching the agent runner) \u2192 `ready` / `failed`.",
             "enum": [
               "provisioning",
+              "action_required",
               "cloning",
               "starting",
               "connecting",
@@ -8266,6 +8279,19 @@
             "title": "Conversation Id",
             "type": "string"
           },
+          "details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "What the user needs to do when `stage == \"action_required\"`, e.g. `\"Sign in on your laptop.\"`. `None` otherwise.",
+            "title": "Details"
+          },
           "error": {
             "anyOf": [
               {
@@ -8309,6 +8335,7 @@
             "description": "The launch stage just entered, e.g. `\"provisioning\"` \u2014 see `SandboxStatus` for the full pipeline order.",
             "enum": [
               "provisioning",
+              "action_required",
               "cloning",
               "starting",
               "connecting",
