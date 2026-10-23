@@ -3886,10 +3886,32 @@
       "McpServerSummary": {
         "description": "An MCP server a harness loads on the host, without secrets.",
         "properties": {
+          "auth_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "connected",
+                  "sign_in_required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Account state reported by the host's sign-in manager: `connected` or `sign_in_required`; `None` when nothing reports one.",
+            "title": "Auth Status"
+          },
           "harness": {
             "description": "Harness family that loads it: `claude`, `codex`, or `cursor`.",
             "title": "Harness",
             "type": "string"
+          },
+          "managed": {
+            "default": false,
+            "description": "Whether an organization pins this server for every user on the host (Claude Code's enterprise MCP config), so it is not the user's to edit.",
+            "title": "Managed",
+            "type": "boolean"
           },
           "name": {
             "description": "Server name as configured, e.g. `\"github\"`.",
@@ -3913,6 +3935,18 @@
             "description": "Config scope; always `user` today.",
             "title": "Scope",
             "type": "string"
+          },
+          "sign_in_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the user finishes signing in; only with `sign_in_required`, and only an http(s) URL carrying no credentials.",
+            "title": "Sign In Url"
           },
           "source_id": {
             "anyOf": [
