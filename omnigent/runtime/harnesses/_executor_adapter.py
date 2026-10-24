@@ -352,6 +352,7 @@ class ExecutorAdapter(HarnessApp):
                         agent_name=request.model or "unknown",
                         user_message=user_message,
                         model=request.model_override or request.model,
+                        response_id=ctx.response_id,
                     )
 
                 response_text: str | None = None
