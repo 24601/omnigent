@@ -7855,6 +7855,7 @@ async def test_session_list_global_sessions_filter_and_connectivity() -> None:
                             "status": "running",
                             "runner_id": "r1",
                             "parent_session_id": None,
+                            "labels": {"omnigent.created_by_session_id": "conv_x"},
                         },
                         {
                             "id": "s2",
@@ -7896,6 +7897,7 @@ async def test_session_list_global_sessions_filter_and_connectivity() -> None:
             "runner_id": "r1",
             "runner_online": True,
             "parent_session_id": None,
+            "created_by_session_id": "conv_x",
         },
         {
             "session_id": "s2",
@@ -7905,6 +7907,7 @@ async def test_session_list_global_sessions_filter_and_connectivity() -> None:
             "runner_id": "r1",
             "runner_online": True,
             "parent_session_id": None,
+            "created_by_session_id": None,
         },
     ]
     # Connectivity resolved once per UNIQUE runner — two sessions share
