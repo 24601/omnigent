@@ -4151,6 +4151,18 @@
             ],
             "title": "Model"
           },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Assistant-only harness label for the message, e.g. Codex `\"commentary\"` (progress), `\"partial_answer\"` or `\"final_answer\"`. Stored as given so clients can act on values added later; `None` when unset, not a string, or longer than 64 characters.",
+            "title": "Phase"
+          },
           "role": {
             "description": "`\"user\"` or `\"assistant\"`.",
             "enum": [
