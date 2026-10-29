@@ -49,6 +49,7 @@ import {
 import type { RightRailTab } from "@/shell/railTabs";
 import type { ChangedSort } from "@/shell/FlatFileList";
 import { WorkspacePanel } from "@/shell/WorkspacePanel";
+import { revealFolderInFilesPanel } from "@/shell/FilesPanel";
 import { citedFilePosition } from "@/shell/filePositionState";
 import { useGridSessions } from "./GridSessionsContext";
 
@@ -252,22 +253,23 @@ export function GridSessionPane({
     [navigateWorkspace, onOpenWorkspace],
   );
   useUiOpenFile(sessionId, selected && canBrowse, openFile);
+  const showTab = useCallback((rightRailTab: RightRailTab | null) => {
+    setWorkspace((previous) => ({
+      ...previous,
+      rightRailTab,
+      selectedFilePath: null,
+      selectedTerminalKey: null,
+      openPanels:
+        isDefaultWorkspaceTab(rightRailTab) && !readPinnedWorkspaceTabs().includes(rightRailTab)
+          ? [...new Set([...(previous.openPanels ?? []), rightRailTab])]
+          : previous.openPanels,
+    }));
+  }, []);
   const selectTab = useCallback(
     (rightRailTab: RightRailTab | null) => {
-      navigateWorkspace("", undefined, () =>
-        setWorkspace((previous) => ({
-          ...previous,
-          rightRailTab,
-          selectedFilePath: null,
-          selectedTerminalKey: null,
-          openPanels:
-            isDefaultWorkspaceTab(rightRailTab) && !readPinnedWorkspaceTabs().includes(rightRailTab)
-              ? [...new Set([...(previous.openPanels ?? []), rightRailTab])]
-              : previous.openPanels,
-        })),
-      );
+      navigateWorkspace("", undefined, () => showTab(rightRailTab));
     },
-    [navigateWorkspace],
+    [navigateWorkspace, showTab],
   );
   const closeFile = useCallback(
     (path: string) => {
@@ -298,6 +300,14 @@ export function GridSessionPane({
         selectTab("github");
         onOpenWorkspace();
       },
+      openFolder: showFiles
+        ? (absolutePath: string) =>
+            navigateWorkspace(absolutePath, undefined, () => {
+              revealFolderInFilesPanel(sessionId, absolutePath);
+              showTab("files");
+              onOpenWorkspace();
+            })
+        : undefined,
       conversationId: sessionId,
       workspaceRoot: environment.data?.root ?? null,
       workspaceHome: environment.data?.home ?? null,
@@ -308,7 +318,10 @@ export function GridSessionPane({
       openFile,
       registerNavigationGuard,
       selectTab,
+      navigateWorkspace,
+      showTab,
       onOpenWorkspace,
+      showFiles,
       sessionId,
       environment.data,
       session?.hostId,
