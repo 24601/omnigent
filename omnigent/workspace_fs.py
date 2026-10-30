@@ -642,6 +642,37 @@ class WorkspaceReader:
             ),
         )
 
+    def github_review_threads(
+        self, session_id: str, pr_url: str, after: str, head_sha: str, base_sha: str
+    ) -> _WorkspacePayload:
+        """Published review conversations, optionally paginated at a requested revision."""
+        return cast(
+            "_WorkspacePayload",
+            pr_resource.pr_review_threads(
+                str(self._root),
+                session_id=session_id,
+                pr_url=pr_url,
+                after=after,
+                head_sha=head_sha,
+                base_sha=base_sha,
+            ),
+        )
+
+    def github_review_thread_comments(
+        self, session_id: str, pr_url: str, thread_id: str, after: str
+    ) -> _WorkspacePayload:
+        """Additional replies in a selected-PR review conversation."""
+        return cast(
+            "_WorkspacePayload",
+            pr_resource.pr_review_thread_comments(
+                str(self._root),
+                session_id=session_id,
+                pr_url=pr_url,
+                thread_id=thread_id,
+                after=after,
+            ),
+        )
+
     def github_changes(
         self, session_id: str | None = None, pr_url: str | None = None
     ) -> _WorkspacePayload:
@@ -681,7 +712,12 @@ class WorkspaceReader:
         )
 
     def github_pr_diff(
-        self, session_id: str | None = None, pr_url: str | None = None
+        self,
+        session_id: str | None = None,
+        pr_url: str | None = None,
+        *,
+        head_sha: str | None = None,
+        base_sha: str | None = None,
     ) -> _WorkspacePayload:
         """The selected PR's unified diff patch."""
         return cast(
@@ -690,6 +726,8 @@ class WorkspaceReader:
                 str(self._root),
                 session_id=session_id,
                 pr_url=pr_url,
+                head_sha=head_sha,
+                base_sha=base_sha,
             ),
         )
 
