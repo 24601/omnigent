@@ -4204,6 +4204,21 @@ class HostProcess:
             )
         if op == "github_info":
             return r.github_info(session_id, cast("str | None", params.get("pr_url")))
+        if op == "github_review_threads":
+            return r.github_review_threads(
+                session_id,
+                str(params.get("pr_url", "")),
+                str(params.get("after", "")),
+                str(params.get("head_sha", "")),
+                str(params.get("base_sha", "")),
+            )
+        if op == "github_review_thread_comments":
+            return r.github_review_thread_comments(
+                session_id,
+                str(params.get("pr_url", "")),
+                str(params.get("thread_id", "")),
+                str(params.get("after", "")),
+            )
         if op == "github_changes":
             return r.github_changes(session_id, cast("str | None", params.get("pr_url")))
         if op == "github_diff":
@@ -4217,7 +4232,12 @@ class HostProcess:
                 base_sha=cast("str | None", params.get("base_sha")),
             )
         if op == "github_pr_diff":
-            return r.github_pr_diff(session_id, cast("str | None", params.get("pr_url")))
+            return r.github_pr_diff(
+                session_id,
+                cast("str | None", params.get("pr_url")),
+                head_sha=cast("str | None", params.get("head_sha")),
+                base_sha=cast("str | None", params.get("base_sha")),
+            )
         if op == "github_labels":
             return r.github_labels(session_id, cast("str | None", params.get("pr_url")))
         if op == "github_merge_options":
@@ -4343,6 +4363,22 @@ class HostProcess:
                 pr_url=cast("str | None", params.get("pr_url")),
                 add=params.get("add", []),
                 remove=params.get("remove", []),
+            )
+        if op == "github_review_thread_create":
+            return pr_resource.create_pr_review_thread(
+                workspace,
+                session_id=cast("str | None", params.get("session_id")),
+                pr_url=cast("str | None", params.get("pr_url")),
+                body=params.get("body"),
+                anchor=params.get("anchor"),
+            )
+        if op == "github_review_thread_reply":
+            return pr_resource.reply_to_pr_review_thread(
+                workspace,
+                session_id=cast("str | None", params.get("session_id")),
+                pr_url=cast("str | None", params.get("pr_url")),
+                thread_id=str(params.get("thread_id", "")),
+                body=params.get("body"),
             )
         if op == "github_comment_create":
             return pr_resource.create_pr_comment(
