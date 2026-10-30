@@ -2278,6 +2278,42 @@ def create_app(
         if _owner_credentials:
             sandbox_config = _dc_replace(sandbox_config, owner_credentials=_owner_credentials)
             app.state.sandbox_config = sandbox_config
+    from omnigent.server.sandbox_profiles import SandboxProfileCatalog
+
+    sandbox_profiles = (
+        SandboxProfileCatalog(conversation_store, sandbox_config, host_store)
+        if host_store is not None and resolved_feature_flags.enabled(Feature.SANDBOX_PROFILES)
+        else None
+    )
+    app.state.sandbox_profiles = sandbox_profiles
+    if host_store is not None and sandbox_profiles is not None:
+
+        def admit_profiled_launch(
+            host_id: str,
+            session_id: str,
+            owner: str | None,
+            generation: str | None,
+            allow_unbound: bool = False,
+            transfer_from_host_id: str | None = None,
+        ) -> None:
+            _admit_host_launch(
+                host_id,
+                session_id,
+                owner,
+                generation,
+                allow_unbound,
+                transfer_from_host_id,
+            )
+            host = host_store.get_host(host_id)
+            sandbox_profiles.require_session_host(
+                session_id,
+                host_id,
+                bind=not allow_unbound and transfer_from_host_id is None,
+                sandbox_provider=host.sandbox_provider if host is not None else None,
+                user_id=host.user_id if host is not None else None,
+            )
+
+        host_registry.launch_authorizer = admit_profiled_launch
     # Admin roster: the config ``admins:`` list (canonical) union'd with the
     # runtime-editable ``<data_dir>/admins`` file. Built once here so BOTH the
     # admin-gated auth routes AND ``/v1/me``'s is_admin computation consult the
@@ -3728,6 +3764,13 @@ def create_app(
         tags=["extensions"],
     )
     from omnigent.server.routes.sandbox_inference import create_sandbox_inference_router
+    from omnigent.server.routes.sandbox_profiles import create_sandbox_profiles_router
+
+    app.include_router(
+        create_sandbox_profiles_router(auth_provider=auth_provider),
+        prefix="/v1",
+        tags=["sandbox profiles"],
+    )
 
     app.include_router(
         create_sandbox_inference_router(
@@ -4747,6 +4790,9 @@ def create_app(
             auth_provider=auth_provider,
             runner_exit_reports=runner_exit_reports,
             resolve_managed_runner_owner=_resolve_managed_runner_owner,
+            admit_managed_runner=(
+                sandbox_profiles.admit_runner_connection if sandbox_profiles is not None else None
+            ),
             mint_managed_runner_token=(
                 _mint_managed_runner_token if runner_account_store is not None else None
             ),
