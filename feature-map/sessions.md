@@ -98,6 +98,8 @@ the header menu), and each place is a separate entry point.
 - `fork-arclet`: an Arclet session forks only onto a new Arclet, the dialog's
   single host choice. Without one on the server, Fork stays disabled.
 - `clone`: copy a session into a new workspace, including a typed `~` path.
+  Participating sandbox providers require a [profile selection](sandbox-profiles.md)
+  before submission, including branch clones.
 - `reconnect`: a stopped or stranded session shows a reconnect affordance and a
   dialog with the command to run; the desktop app reconnects a local host
   itself, and starts an Arca host recognized by its saved ID or CLI-seeded name
@@ -349,7 +351,9 @@ Open a Canvas session outside the loaded sidebar pages to see its current host
 status and live session updates, including when the app is embedded.
 
 **Reconnect:** in a session whose agent stopped, use the reconnect affordance
-in the chat; the dialog shows the command for this situation (for example
+in the chat. Its **Clone** tab uses the shared fork form, including the searchable
+sandbox-profile picker and source-profile default for participating providers.
+The dialog shows the command for this situation (for example
 `omnigent host` when the host is offline, or the harness's `--resume` command
 when a local session is stranded). In the desktop app, **Reconnect host** acts
 directly for this machine or a recognized Arca host; Arca's connect console
