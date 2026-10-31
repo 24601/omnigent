@@ -77,6 +77,7 @@ const { createBrowserViewRegistry } = require("./browserViewRegistry");
 const { createBrowserViewBoundsController } = require("./browserViewBounds");
 const { registerBrowserIpc } = require("./browserIpc");
 const { arcaTarget, createArcaIdentityStore, isArcaAgentContext } = require("./arcaIdentity");
+const { isHostThisMachine, SESSION_HOST_PROTOCOL } = require("./hostIdentity");
 const { isDeveloperModeEnabled } = require("./developer_mode");
 const { DEV_DOMAIN, getDevUserDefault } = require("./dev_preferences");
 const {
@@ -121,6 +122,7 @@ const {
   settingsMenuItem,
 } = require("./settingsNavigation");
 const omnigentCli = require("./omnigent_cli");
+
 const serverManager = require("./server_manager");
 const { diagnostics } = require("./diagnostics");
 
@@ -3921,15 +3923,18 @@ function createBrowserRegistryForWindow(win) {
     onSuppressionChange: (suppressed) => {
       if (suppressed) browserPermissionPrompt.dismiss(win);
     },
-    isArcaAgentContext: (context) => {
+    allowsLocalhost: (context) => {
+      if (context?.revoked || win.isDestroyed() || !pinnedOrigin(win)) return false;
       const target = windowArcaServerUrl(win);
-      return isArcaAgentContext(arcaIdentities.get(target), context, {
-        enabled: !win.isDestroyed() && !!pinnedOrigin(win) && databricksInternalFeaturesEnabled(),
-        managed:
-          isDatabricksManagedServerUrl(windows.get(win)?.serverUrl) &&
-          isDatabricksManagedServerUrl(target),
-        serverTarget: target,
-      });
+      return (
+        isArcaAgentContext(arcaIdentities.get(target), context, {
+          enabled: !win.isDestroyed() && !!pinnedOrigin(win) && databricksInternalFeaturesEnabled(),
+          managed:
+            isDatabricksManagedServerUrl(windows.get(win)?.serverUrl) &&
+            isDatabricksManagedServerUrl(target),
+          serverTarget: target,
+        }) || context?.hostIsThisMachine === true
+      );
     },
     createBoundsController: createBrowserViewBoundsController,
     attachToHost: (view) => {
@@ -5067,10 +5072,21 @@ function registerIpc() {
     isPinnedOriginSender,
     getRegistryForEvent: browserRegistryForSender,
     getWindowForEvent: (event) => BrowserWindow.fromWebContents(event.sender),
-    getAgentContextForEvent: (event, sourceHostId) => ({
-      serverTarget: arcaTarget(windowArcaServerUrl(BrowserWindow.fromWebContents(event.sender))),
-      sourceHostId: typeof sourceHostId === "string" ? sourceHostId : null,
-    }),
+    getAgentContextForEvent: (event, opts) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const sourceHostId = typeof opts?.sourceHostId === "string" ? opts.sourceHostId : null;
+      // Main derives the server target and local-machine eligibility; the page only routes.
+      return {
+        serverTarget: arcaTarget(windowArcaServerUrl(win)),
+        sourceHostId,
+        hostIsThisMachine:
+          opts?.sessionHostProtocol === SESSION_HOST_PROTOCOL &&
+          isHostThisMachine({
+            hostId: sourceHostId,
+            serverUrl: windows.get(win)?.serverUrl,
+          }),
+      };
+    },
     recoverAgentNavigationForEvent: async (
       event,
       url,
