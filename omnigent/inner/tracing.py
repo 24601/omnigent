@@ -83,6 +83,11 @@ _ERROR_MESSAGE = "error.message"
 # stamped regardless of content capture.
 _SKILL_NAME = "omnigent.skill.name"
 
+# Response id on the AGENT span. A turn that joins its caller's trace no longer
+# has a trace id derived from the response id, so this is how a response is
+# found in the backend. Not gen_ai.response.id, which names a model completion.
+_RESPONSE_ID = "omnigent.response.id"
+
 # ---------------------------------------------------------------------------
 # Global enable/disable
 # ---------------------------------------------------------------------------
@@ -153,6 +158,7 @@ class TracingContext:
         agent_name: str,
         user_message: str,
         model: str | None = None,
+        response_id: str | None = None,
     ) -> Span:
         """Begin the root AGENT span for a turn."""
         from opentelemetry import trace
@@ -172,6 +178,8 @@ class TracingContext:
         }
         if self.session_id:
             attrs["session.id"] = self.session_id
+        if response_id:
+            attrs[_RESPONSE_ID] = response_id
         if model:
             attrs[_LLM_MODEL_NAME] = model
             provider, model_name = parse_provider_name(model)
