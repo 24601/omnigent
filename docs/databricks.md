@@ -526,7 +526,7 @@ For a single agent turn that calls one tool and one LLM:
   gen_ai.provider.name  = databricks
   gen_ai.request.model  = databricks-claude-sonnet-4
   session.id            = conv_e4f5a6b7c8d9e0f1
-  task.id               = resp_d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3
+  omnigent.response.id  = resp_d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3
 
 [llm_call]                            (child span)
   gen_ai.operation.name              = chat
@@ -541,8 +541,9 @@ For a single agent turn that calls one tool and one LLM:
   tool.call_id          = call_abc123
 ```
 
-The trace ID is the hex suffix of the response ID, so you can search
-for a specific request in MLflow by stripping the `resp_` prefix.
+To find a specific request in MLflow, search for its response ID in the
+agent span's `omnigent.response.id` attribute. When the turn has no
+caller trace to join, the trace ID is also the response ID's hex suffix.
 
 ### Verified end-to-end
 
