@@ -335,7 +335,6 @@ _TURN_ACTOR_LABEL = "omnigent.turn_actor"
 # via the JSON POST /v1/sessions create — same server-permission posture
 # as _execute_subagent_tool.
 _SESSION_CREATE_TOOLS = frozenset({"sys_session_create"})
-_SESSION_ID_PLACEHOLDER_MAX_CHARS = 64
 
 # Priority 5f.0: Session query tools — peek/list/close/get_info/share. The
 # runner has no in-process ConversationStore, so these read/mutate session
@@ -720,6 +719,8 @@ _RUNNER_STATUS_CONCURRENCY = 8
 _SESSION_LIST_DEFAULT_VISIBILITY = "mine"
 # Newest sessions ``sys_session_list`` returns when the agent passes no ``limit``.
 _SESSION_LIST_DEFAULT_LIMIT = 50
+# Most sessions one ``created_by_this_session`` call scans before it returns a cursor.
+_CREATED_SESSIONS_SCAN_LIMIT = 5 * _AGENT_LIST_PAGE_LIMIT
 _SESSION_LIST_VISIBILITIES = ("mine", "shared", "all")
 
 _DISCOVERY_LIST_MAX_LIMIT = 100
@@ -3819,18 +3820,6 @@ async def _execute_session_create(
         if has_config_path:
             # The bundled create doesn't copy a workflow's plan into the journal.
             return json.dumps({"error": "workflow_id requires agent_id"})
-    session_id_placeholder = args.get("session_id_placeholder")
-    if session_id_placeholder is not None and (
-        not isinstance(session_id_placeholder, str)
-        or not session_id_placeholder.strip()
-        or len(session_id_placeholder) > _SESSION_ID_PLACEHOLDER_MAX_CHARS
-    ):
-        return json.dumps(
-            {
-                "error": "session_id_placeholder must be a nonempty string of at most "
-                f"{_SESSION_ID_PLACEHOLDER_MAX_CHARS} characters"
-            }
-        )
     if has_config_path:
         return await _session_create_from_config_path(
             str(config_path),
@@ -3887,8 +3876,6 @@ async def _execute_session_create(
         info_data: _JsonObject = {}
         # Independent first tasks are delivered after creation, so check the server's
         # limit first rather than leave a session without its task.
-        # The longest first task the server takes; filling in the session ID must stay under it.
-        first_task_max_chars = min(LEGACY_SESSION_MESSAGE_MAX_CHARS, SESSION_MESSAGE_MAX_CHARS)
         long_first_task = (
             placement in ("same_host", "host")
             and isinstance(message, str)
@@ -3905,11 +3892,6 @@ async def _execute_session_create(
             info = await server_client.get("/v1/info", timeout=30.0)
             info.raise_for_status()
             info_data = info.json()
-            advertised_max_chars = info_data.get("session_message_max_chars")
-            if isinstance(advertised_max_chars, int) and not isinstance(
-                advertised_max_chars, bool
-            ):
-                first_task_max_chars = min(advertised_max_chars, SESSION_MESSAGE_MAX_CHARS)
         if long_first_task:
             server_max_chars = info_data.get("session_message_max_chars")
             if not isinstance(server_max_chars, int) or isinstance(server_max_chars, bool):
@@ -4063,16 +4045,9 @@ async def _execute_session_create(
         if placement in ("same_host", "host") and args.get("message"):
             from omnigent.runner.session_message import execute_message_tool
 
-            # The runner sends this message itself, so it can name the new session's ID,
-            # unless that would push the task over the limit; the worker then looks it up.
-            initial_text = args["message"]
-            if session_id_placeholder is not None and isinstance(initial_text, str):
-                filled = initial_text.replace(session_id_placeholder, data["id"])
-                if len(filled) <= first_task_max_chars:
-                    initial_text = filled
             initial_message = json.loads(
                 await execute_message_tool(
-                    {"session_id": data["id"], "message": initial_text},
+                    {"session_id": data["id"], "message": args["message"]},
                     server_client,
                     conversation_id,
                 )
@@ -5958,11 +5933,14 @@ async def _execute_session_query_tool(
                     )
                 }
             )
+        created_by_this_session = args.get("created_by_this_session") is True
         window = _discovery_list_window(
             args,
             tool_name,
             ("sessions",),
-            _session_list_filters(agent_name, include_archived, visibility, project),
+            _session_list_filters(
+                agent_name, include_archived, visibility, project, created_by_this_session
+            ),
         )
         if isinstance(window, str):
             return window
@@ -5974,6 +5952,7 @@ async def _execute_session_query_tool(
             include_archived=include_archived,
             visibility=visibility,
             project=project,
+            created_by_this_session=created_by_this_session,
             limit=limit,
             cursor_state=cursor_state,
             continued=continued,
@@ -6921,6 +6900,7 @@ def _session_list_filters(
     include_archived: bool,
     visibility: str = _SESSION_LIST_DEFAULT_VISIBILITY,
     project: str | None = None,
+    created_by_this_session: bool = False,
 ) -> _JsonObject:
     """
     The ``sys_session_list`` filters a continuation cursor is bound to.
@@ -6932,6 +6912,7 @@ def _session_list_filters(
     :param agent_name: The caller's ``agent_name`` argument, e.g. ``"researcher"``.
     :param include_archived: Whether archived sessions are listed.
     :param visibility: Which sessions the global view covers, e.g. ``"mine"``.
+    :param created_by_this_session: Whether only the caller's workers are listed.
     :returns: The filter mapping, e.g. ``{"agent_name": None}``.
     """
     filters: _JsonObject = {
@@ -6943,6 +6924,8 @@ def _session_list_filters(
         filters["visibility"] = visibility
     if project is not None:
         filters["project"] = project
+    if created_by_this_session:
+        filters["created_by_this_session"] = True
     return filters
 
 
@@ -6954,6 +6937,7 @@ async def _session_list_via_rest(
     include_archived: bool = False,
     visibility: str = _SESSION_LIST_DEFAULT_VISIBILITY,
     project: str | None = None,
+    created_by_this_session: bool = False,
     limit: int | None,
     cursor_state: dict[str, _DiscoveryState],
     continued: bool,
@@ -6978,6 +6962,8 @@ async def _session_list_via_rest(
     :param include_archived: Also list archived sessions in the global view.
     :param visibility: ``"mine"``, ``"shared"`` or ``"all"`` — the server's
         ownership filter for the global view.
+    :param created_by_this_session: List only sessions the caller started, and
+        skip the ``sub_agents`` view.
     :param limit: Optional maximum rows returned from the global sessions view;
         :data:`_SESSION_LIST_DEFAULT_LIMIT` when omitted.
     :param cursor_state: Opaque continuation position for the global sessions view.
@@ -6985,32 +6971,109 @@ async def _session_list_via_rest(
         :data:`_SESSION_LIST_DEFAULT_LIMIT` sessions exist, otherwise a bounded
         page with continuation metadata.
     """
-    sub_agents = await _collect_sub_agents(conversation_id, server_client)
-    sessions_page = (
-        _DiscoveryPage([], False)
-        if cursor_state["sessions"][0] == _DISCOVERY_END
-        else await _collect_global_sessions(
+    page_limit = limit or _SESSION_LIST_DEFAULT_LIMIT
+    # Finding this session's workers doesn't need its named children.
+    sub_agents = (
+        []
+        if created_by_this_session
+        else await _collect_sub_agents(conversation_id, server_client)
+    )
+    if cursor_state["sessions"][0] == _DISCOVERY_END:
+        sessions_page = _DiscoveryPage([], False)
+    elif created_by_this_session:
+        sessions_page = await _collect_created_sessions(
+            conversation_id,
             server_client,
             agent_name,
             include_archived=include_archived,
             visibility=visibility,
             project=project,
             after=cursor_state["sessions"][1],
-            limit=limit or _SESSION_LIST_DEFAULT_LIMIT,
+            limit=page_limit,
         )
-    )
+    else:
+        sessions_page = await _collect_global_sessions(
+            server_client,
+            agent_name,
+            include_archived=include_archived,
+            visibility=visibility,
+            project=project,
+            after=cursor_state["sessions"][1],
+            limit=page_limit,
+        )
     result = _bounded_discovery_result(
         {"sub_agents": cast(list[_JsonObject], sub_agents), "sessions": sessions_page.rows},
         limit=limit,
         cursor_state=cursor_state,
         continued=continued,
         tool_name="sys_session_list",
-        filters=_session_list_filters(agent_name, include_archived, visibility, project),
+        filters=_session_list_filters(
+            agent_name, include_archived, visibility, project, created_by_this_session
+        ),
         source_pages={"sessions": sessions_page},
         page_sections=("sessions",),
         default_limit=_SESSION_LIST_DEFAULT_LIMIT,
     )
     return await _fill_returned_runner_online(result, server_client)
+
+
+async def _collect_created_sessions(
+    conversation_id: str,
+    server_client: httpx.AsyncClient,
+    agent_name: object,
+    *,
+    include_archived: bool,
+    visibility: str,
+    project: str | None,
+    after: str | None,
+    limit: int,
+) -> _DiscoveryPage:
+    """
+    The global session view narrowed to sessions *conversation_id* started.
+
+    Pages ``GET /v1/sessions`` in large source pages here, so a trigger manager
+    makes one call instead of following a cursor through every session it owns.
+    Stops after more than ``limit`` matches, at the end of the listing, or once
+    :data:`_CREATED_SESSIONS_SCAN_LIMIT` rows were scanned.
+
+    :param conversation_id: The caller; rows whose ``created_by_session_id`` is
+        this id are kept, e.g. ``"conv_manager"``.
+    :param server_client: HTTP client pointed at the Omnigent server.
+    :param agent_name: Optional agent-name filter, as for the global view.
+    :param include_archived: Also list archived sessions.
+    :param visibility: The server's ownership filter, e.g. ``"mine"``.
+    :param project: Optional project-name filter.
+    :param after: Server cursor to resume from, if any.
+    :param limit: Rows the caller asked for; one extra match proves more remain.
+    :returns: The matching rows and the source continuation state.
+    """
+    matches: list[_JsonObject] = []
+    scanned = 0
+    while True:
+        page = await _collect_global_sessions(
+            server_client,
+            agent_name,
+            include_archived=include_archived,
+            visibility=visibility,
+            project=project,
+            after=after,
+            limit=_AGENT_LIST_PAGE_LIMIT,
+        )
+        if page.failed:
+            # A failed read can't prove a worker is absent, so never report "none".
+            return _DiscoveryPage(matches, True, after, failed=not matches)
+        matches += [
+            row for row in page.rows if row.get("created_by_session_id") == conversation_id
+        ]
+        scanned += _AGENT_LIST_PAGE_LIMIT
+        if (
+            not page.has_more
+            or page.next_after is None
+            or len(matches) > limit
+            or scanned >= _CREATED_SESSIONS_SCAN_LIMIT
+        ):
+            return _DiscoveryPage(matches, page.has_more, page.next_after)
+        after = page.next_after
 
 
 async def _fill_returned_runner_online(result: str, server_client: httpx.AsyncClient) -> str:

@@ -232,10 +232,8 @@ describe("saved trigger prompts", () => {
           ? 'agent_id "worker-agent", placement "same_host", title "Triage \\"orchestrator\\""'
           : 'agent_id "worker-agent", placement "same_host"',
       );
-      // Slack start replies carry the placeholder the runner fills in, kept as written.
-      const placeholder = source === "slack" ? ', session_id_placeholder "CONVERSATION_ID"' : "";
       expect(updated).toContain(
-        `model "model-with-\\"quotes\\"", reasoning_effort "low", permission_mode "approve-for-me"${placeholder}, and a message`,
+        'model "model-with-\\"quotes\\"", reasoning_effort "low", permission_mode "approve-for-me", and a message',
       );
       expect(updated).toContain("Keep this custom instruction.");
       const context = { ...CTX, taskSessionMode };
@@ -1489,16 +1487,9 @@ describe("renderTriggerPrompt", () => {
         "<slack-reply>\n:hourglass_flowing_sand: Omnigent is working on it...\n\nTrack progress: <https://omni.example.com/c/CONVERSATION_ID|Omni Session>\nSent with Omnigent\n</slack-reply>\nReply in the same thread";
       if (linkBack) {
         expect(worker).toContain(startReply);
-        // The runner fills in the link, so the worker looks its ID up only as a fallback.
-        expect(manager).toContain('session_id_placeholder "CONVERSATION_ID", and a message under');
-        expect(worker.split("Track progress:")[0]).not.toContain("CONVERSATION_ID");
-        expect(worker).toContain(
-          "If the link still ends with an uppercase placeholder word instead of a session ID",
-        );
       } else {
         expect(worker).not.toContain("Track progress:");
         expect(worker).toContain("Do not send an acknowledgement or a session link.");
-        expect(manager).not.toContain("session_id_placeholder");
       }
       expect(worker).toContain('ends with a line "Sent with Omnigent"');
       expect(worker).toContain(
@@ -1515,8 +1506,6 @@ describe("renderTriggerPrompt", () => {
 
   it("signs what it posts and stops when it can't reach the service", () => {
     const prompt = renderTriggerPrompt("jira", fields(), CTX);
-    // Only Slack workers post their own session link, so only they opt in to the fill-in.
-    expect(prompt).not.toContain("session_id_placeholder");
 
     // Link-backs and worker posts go out under the owner's account, so both are signed.
     expect(prompt).toContain(
@@ -1576,8 +1565,13 @@ describe("renderTriggerPrompt", () => {
     expect(prompt).toContain(
       'Skip any ticket you already started a session for, or that is on a "Delivery pending:" line. Check the sessions your earlier replies in this session say you started first.',
     );
+    // Only a run that read everything saw nothing after its checkpoint. A failed run can
+    // repeat an older checkpoint after an interrupted run left an unrecorded worker.
     expect(prompt).toContain(
-      "For results not listed there, call sys_session_list once with include_archived true, following next_cursor through every page, and look for sessions whose created_by_session_id is your session ID",
+      'If the last message you wrote before this run\'s message is a reply with no "Delivery pending:" entries whose "Checked through:" time equals the "Run time:" of the message it answered, that run read and handled every result, so a result created after that time can\'t have a session yet: start it without the check below. A reply that ends earlier, such as after a failed or partial run, doesn\'t count, even if it repeats an older check time.',
+    );
+    expect(prompt).toContain(
+      "For other results not listed there, call sys_session_list once with include_archived true, and created_by_this_session true when the tool offers it, following next_cursor through every page, and look for sessions whose created_by_session_id is your session ID",
     );
     // Older runners silently ignore include_archived; their rows lack the archived field.
     expect(prompt).toContain(
@@ -1626,7 +1620,7 @@ describe("renderTriggerPrompt", () => {
       'If it returns a conversation_id with status created_initial_message_failed, the session exists but its task wasn\'t delivered: don\'t create another or resend now; list it as "<title> <conversation_id>" on a "Delivery pending:" line and go on.',
     );
     expect(prompt).toContain(
-      "2. For each pending delivery, find its session: by its conversation_id, or, for an unconfirmed start listed without one, by its title among the sessions you created (sys_session_list with include_archived true, following next_cursor through every page).",
+      "2. For each pending delivery, find its session: by its conversation_id, or, for an unconfirmed start listed without one, by its title among the sessions you created (sys_session_list with include_archived true, and created_by_this_session true when the tool offers it, following next_cursor through every page).",
     );
     // An unconfirmed start that never happened is fetched again by key, since the
     // checkpoint may have moved past its creation time while it was pending.
@@ -2076,7 +2070,7 @@ describe("one task session for every match", () => {
     );
     // The same lookup runs before a first start and before a replacement.
     expect(prompt).toContain(
-      `So before you start a task session, and to resolve an unconfirmed start, call sys_session_list once with include_archived true, following next_cursor through every page, and look for sessions whose created_by_session_id is your session ID and whose title is ${TITLE}. One that isn't archived and wasn't known as a task session before this run (named on a "Task session:" line, returned by your own earlier calls, or named after "replacing" on a pending entry) is your task session.`,
+      `So before you start a task session, and to resolve an unconfirmed start, call sys_session_list once with include_archived true, and created_by_this_session true when the tool offers it, following next_cursor through every page, and look for sessions whose created_by_session_id is your session ID and whose title is ${TITLE}. One that isn't archived and wasn't known as a task session before this run (named on a "Task session:" line, returned by your own earlier calls, or named after "replacing" on a pending entry) is your task session.`,
     );
     expect(prompt).toContain(
       "If you have no task session, look for one as in step 2. If you find one, the run that started it may already have sent it this ticket: check its latest items for the title before sending. If there is none, start one",
