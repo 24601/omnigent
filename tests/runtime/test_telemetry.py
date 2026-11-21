@@ -9,6 +9,7 @@ and deterministic. Integration with the full workflow lives in
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Iterator
 
@@ -285,6 +286,70 @@ def test_trace_context_for_response_shared_across_children(
     assert trace_ids == {_RESP_HEX}, (
         f"expected all spans to share trace_id {_RESP_HEX!r}, got {trace_ids!r}"
     )
+
+
+def _remote_parent(trace_id: int, span_id: int, *, sampled: bool = True) -> otel_trace.Span:
+    flags = otel_trace.TraceFlags(
+        otel_trace.TraceFlags.SAMPLED if sampled else otel_trace.TraceFlags.DEFAULT
+    )
+    return otel_trace.NonRecordingSpan(
+        otel_trace.SpanContext(
+            trace_id=trace_id, span_id=span_id, is_remote=True, trace_flags=flags
+        )
+    )
+
+
+async def test_interleaved_turns_keep_their_own_active_parent(
+    in_memory_exporter: InMemorySpanExporter,
+) -> None:
+    """
+    Two turns that interleave on one event loop, each under a different
+    active parent (as the harness request span is when HTTP propagation is
+    on), parent their spans on their own caller instead of a
+    response-derived root.
+    """
+    tracer = otel_trace.get_tracer("test")
+    both_entered = asyncio.Barrier(2)
+
+    async def turn(parent: otel_trace.Span, response_id: str) -> None:
+        with otel_trace.use_span(parent):
+            with telemetry.trace_context_for_response(response_id=response_id):
+                await both_entered.wait()
+                with tracer.start_as_current_span(f"invoke_agent {response_id}"):
+                    await asyncio.sleep(0)
+
+    first = _remote_parent(0x1111_0000_0000_0000_0000_0000_0000_0001, 0xAAAA_0000_0000_0001)
+    second = _remote_parent(0x2222_0000_0000_0000_0000_0000_0000_0002, 0xBBBB_0000_0000_0002)
+    await asyncio.gather(
+        turn(first, "resp_" + "1" * 32),
+        turn(second, "resp_" + "2" * 32),
+    )
+
+    spans = {span.name: span for span in in_memory_exporter.get_finished_spans()}
+    for parent, response_id in ((first, "resp_" + "1" * 32), (second, "resp_" + "2" * 32)):
+        span = spans[f"invoke_agent {response_id}"]
+        assert span.context.trace_id == parent.get_span_context().trace_id
+        assert span.parent is not None
+        assert span.parent.span_id == parent.get_span_context().span_id
+
+
+def test_unsampled_active_parent_falls_back_to_response_trace(
+    in_memory_exporter: InMemorySpanExporter,
+) -> None:
+    """
+    An unsampled active parent is not joined, for the same reason as an
+    unsampled dispatch context: the turn would export no spans at all.
+    """
+    tracer = otel_trace.get_tracer("test")
+    parent = _remote_parent(int(_CALLER_TRACE_HEX, 16), int(_CALLER_SPAN_HEX, 16), sampled=False)
+    with otel_trace.use_span(parent):
+        with telemetry.trace_context_for_response(response_id=_RESP_ID):
+            with tracer.start_as_current_span("invoke_agent"):
+                pass
+
+    spans = in_memory_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert format(spans[0].context.trace_id, "032x") == _RESP_HEX
 
 
 # ── dispatching-client TRACEPARENT extraction ──────────────────
