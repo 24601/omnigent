@@ -1216,6 +1216,14 @@ export declare type ListBranchCommitsRequest = Message<"omnigent.api.workspace.v
    * @generated from field: string base_revision = 1;
    */
   baseRevision: string;
+
+  /**
+   * The commit whose commits are listed; empty means HEAD. Feature
+   * "branch_commits.head": a server without it lists HEAD's commits.
+   *
+   * @generated from field: string head_revision = 2;
+   */
+  headRevision: string;
 };
 
 /**
@@ -1822,8 +1830,8 @@ export declare type ListLabelsRequest = Message<"omnigent.api.workspace.v1alpha1
   prUrl: string;
 
   /**
-   * Labels whose name matches; unset lists the repository's labels. A host
-   * without label search answers INVALID_ARGUMENT when it's set.
+   * Labels whose name matches; unset lists the repository's labels.
+   * Not supported yet: setting this field returns INVALID_ARGUMENT.
    *
    * @generated from field: string text = 2;
    */
@@ -3019,7 +3027,8 @@ export declare const WorkspaceService: GenService<{
     output: typeof ListRepositoryRefsResponseSchema;
   },
   /**
-   * Lists the commits HEAD has beyond its merge base with a base, newest first.
+   * Lists the commits a head (HEAD by default) has beyond its merge base with a
+   * base, newest first.
    *
    * @generated from rpc omnigent.api.workspace.v1alpha1.WorkspaceService.ListBranchCommits
    */
