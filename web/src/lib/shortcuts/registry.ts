@@ -3,7 +3,12 @@
 
 import { readSubmitWithModEnter } from "@/lib/composerSendShortcutPreferences";
 import { isMacPlatform } from "@/lib/hotkeys";
-import { isNativeShell, supportsDesktopCommands } from "@/lib/nativeBridge";
+import {
+  type DesktopCommand,
+  isNativeShell,
+  shellRoutesDesktopCommands,
+  supportsDesktopCommands,
+} from "@/lib/nativeBridge";
 import {
   type Chord,
   chordAriaShortcut,
@@ -20,9 +25,13 @@ export interface ShortcutEnvironment {
   native: boolean;
   /** The desktop shell's menus own some chords (⌘, for Settings) and hand the command to the page. */
   desktopMenu: boolean;
+  /** The desktop menu's Go items own ⌘[ / ⌘]: the shell says it routes Go Back and Go Forward. */
+  goMenu: boolean;
   /** The composer sends with ⌘↵ and inserts a newline with ↵. */
   submitWithModEnter: boolean;
 }
+
+const GO_COMMANDS: readonly DesktopCommand[] = ["go-back", "go-forward"];
 
 /** Environments built here, which read each field once, on first use. */
 const resolvedEnvironments = new WeakSet<object>();
@@ -49,6 +58,9 @@ export function currentShortcutEnvironment(
     },
     get desktopMenu() {
       return read("desktopMenu", supportsDesktopCommands);
+    },
+    get goMenu() {
+      return read("goMenu", () => shellRoutesDesktopCommands(GO_COMMANDS));
     },
     get submitWithModEnter() {
       return read("submitWithModEnter", readSubmitWithModEnter);
@@ -184,8 +196,8 @@ const browserOpenSessionChord =
   (chord: Chord, alsoOffMac: boolean) => (environment: ShortcutEnvironment) =>
     environment.desktopMenu || (!environment.mac && !alsoOffMac) ? [] : [chord];
 
-/** Sidebar slots in order: ⌘1–⌘9 pick the first nine and ⌘0 the tenth, as browser tabs do. */
-export const SESSION_NUMBER_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] as const;
+/** Sidebar slots in order: ⌘1–⌘9 pick the first nine. ⌘0 stays the menu's Actual Size. */
+export const SESSION_NUMBER_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 /** Workspace rail tabs ⌃1–⌃9, by position. */
 const WORKSPACE_TAB_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
@@ -456,21 +468,26 @@ const APP_BINDINGS = {
   "history.back": {
     group: "navigation",
     label: "Go back",
-    chords: () => [{ mod: true, code: "BracketLeft", matchesAltGraph: true }],
+    // A shell whose Go menu takes ⌘[ hands it over as a command, even from a browser view.
+    chords: (environment) =>
+      environment.goMenu ? [] : [{ mod: true, code: "BracketLeft", matchesAltGraph: true }],
+    menuChords: (environment) => (environment.goMenu ? [{ mod: true, code: "BracketLeft" }] : []),
     // A browser tab keeps its own Back and Forward.
     shownWhen: (context) => context.electron,
   },
   "history.forward": {
     group: "navigation",
     label: "Go forward",
-    chords: () => [{ mod: true, code: "BracketRight", matchesAltGraph: true }],
+    chords: (environment) =>
+      environment.goMenu ? [] : [{ mod: true, code: "BracketRight", matchesAltGraph: true }],
+    menuChords: (environment) => (environment.goMenu ? [{ mod: true, code: "BracketRight" }] : []),
     // A browser tab keeps its own Back and Forward.
     shownWhen: (context) => context.electron,
   },
   "session.number": {
     group: "navigation",
-    rowKeys: (keys) => withRangeLabel(keys, "1…0"),
-    label: "Jump to a sidebar session (1–10)",
+    rowKeys: (keys) => withRangeLabel(keys, "1…9"),
+    label: "Jump to a sidebar session (1–9)",
     // A browser keeps ⌘-digit for its tabs, so there Alt joins it, matched by the
     // physical key because Alt rewrites the digit on macOS.
     chords: (environment) =>
@@ -982,7 +999,7 @@ export function shortcutKeys(id: ShortcutId, environment?: Partial<ShortcutEnvir
   return chord ? chordKeys(chord, resolved.mac) : [];
 }
 
-/** Keys with the last one replaced by a range label such as "1…0". */
+/** Keys with the last one replaced by a range label such as "1…9". */
 function withRangeLabel(keys: string[], range: string): string[] {
   return [...keys.slice(0, -1), range];
 }
