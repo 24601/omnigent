@@ -691,10 +691,15 @@ def trace_context_for_response(
     caller's trace — the cross-service view (dispatcher → runner →
     harness) is one trace instead of disjoint ones.
 
-    Otherwise, derives the W3C trace ID from ``root_response_id`` (if
-    set) or ``response_id``, then injects a synthetic ``traceparent``
-    header via the W3C TraceContext propagator to make any span started
-    inside the context manager inherit this trace ID.
+    Otherwise, a valid, sampled active context (for example the harness
+    request span that HTTP propagation already parented on the caller)
+    is kept, so concurrent turns each stay under their own parent.
+
+    Only when neither applies, derives the W3C trace ID from
+    ``root_response_id`` (if set) or ``response_id``, then injects a
+    synthetic ``traceparent`` header via the W3C TraceContext propagator
+    to make any span started inside the context manager inherit this
+    trace ID.
 
     For root invocations pass only ``response_id``; on the fallback
     path the trace ID is derived from it so direct response-ID →
@@ -709,14 +714,21 @@ def trace_context_for_response(
         e.g. ``"resp_d8e9f0a1..."``.
     :param root_response_id: The root response ID if this is a
         sub-agent invocation, otherwise ``None``.
-    :raises ValueError: If no caller ``TRACEPARENT`` applies and
-        ``response_id`` (or ``root_response_id`` when set) cannot be
-        parsed.
+    :raises ValueError: If neither a caller ``TRACEPARENT`` nor an active
+        context applies and ``response_id`` (or ``root_response_id`` when
+        set) cannot be parsed.
     """
     from opentelemetry import context
+    from opentelemetry import trace as otel_trace
     from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
     ctx = dispatching_client_context()
+    if ctx is None:
+        # Same rule as the dispatch context: an unsampled parent would make
+        # the ParentBased sampler drop every span of the turn.
+        active = otel_trace.get_current_span().get_span_context()
+        if active.is_valid and active.trace_flags.sampled:
+            ctx = context.get_current()
     if ctx is None:
         effective = root_response_id or response_id
         trace_id_hex = trace_id_from_response_id(effective)
